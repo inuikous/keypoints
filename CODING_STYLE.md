@@ -1,5 +1,7 @@
 # Python 至高のコーディング規約 (改訂版)
 
+この文書は、Python初心者にも分かりやすく、チームでの再現性と品質を高めるための実践的な規約です。Copilot/自動化ツールと相性良く運用できるように具体例と数値基準を示します。
+
 ## 📘 目次
 
 1. [基本思想](#基本思想)
@@ -17,6 +19,7 @@
 13. [依存管理＆パッケージング](#依存管理パッケージング)
 14. [Git コミット＆ブランチ運用](#gitコミットブランチ運用)
 15. [Copilot 連携のヒント](#copilot連携のヒント)
+16. [付録（実務ガイド）](#付録実務ガイド)
 
 ---
 
@@ -55,7 +58,7 @@ ProjectName/
 ├── requirements_dev.txt
 ├── requirements.txt
 ├── requirements_result.txt
-├── CODE_STYLE.md
+├── CODING_STYLE.md
 └── README.md
 ```
 
@@ -65,12 +68,17 @@ ProjectName/
 
 | 種類       | スタイル                       | 例                |
 | -------- | -------------------------- | ---------------- |
-| モジュール名   | 小文字 + アンダースコア（snake\_case） | data\_loader.py  |
-| パッケージ名   | 小文字（snake\_case）           | image\_utils     |
+| モジュール名   | 小文字 + アンダースコア（snake_case） | data_loader.py  |
+| パッケージ名   | 小文字（snake_case）           | image_utils     |
 | クラス名     | UpperCamelCase             | ImageProcessor   |
-| 関数・メソッド名 | 小文字 + アンダースコア              | load\_image()    |
-| 変数名      | 小文字 + アンダースコア              | file\_path       |
-| 定数       | 全大文字 + アンダースコア             | MAX\_RETRIES = 3 |
+| 関数・メソッド名 | 小文字 + アンダースコア              | load_image()    |
+| 変数名      | 小文字 + アンダースコア              | file_path       |
+| 定数       | 全大文字 + アンダースコア             | MAX_RETRIES = 3 |
+
+補足：
+* ブールは is_/has_/can_ を先頭に（例: is_valid）。
+* 単位は名前に含める（例: timeout_ms, size_bytes）。
+* コレクションは複数形（users, items）。
 
 ---
 
@@ -88,8 +96,9 @@ ProjectName/
 
 * **PEP 8 準拠**。
 * インデントはスペース4文字。
-* 行長は最大88文字（Black デフォルト）。
+* 行長は最大**88**文字（Black デフォルト）に統一。
 * 空行：クラス間は2行、関数間は1行。
+* 文字列は f-string を優先。ログは遅延評価（`logger.info("x=%s", x)`）。
 
 ```python
 import math
@@ -107,9 +116,14 @@ def compute_area(radius: float) -> float:
 2. サードパーティ
 3. 自プロジェクト
 
-* 各グループは空行で区切る。
-* ローカル（関数内）インポート禁止：すべてモジュール先頭で。
-* 相対インポートは最上位から短く。
+* 各グループは空行で区切る（isortのprofile=black想定）。
+* 原則：モジュール先頭でインポート、ワイルドカード禁止、不要インポート禁止。
+* 例外（許容）：
+  - 遅延読み込みが明らかに有利（重依存/起動高速化）。
+  - 循環依存の回避が必要。
+  - オプショナル依存（導入時のみ使用）。
+  上記はいずれも「WHY」をコメントで必ず残す。
+* 相対よりも絶対インポートを推奨。
 
 ```python
 import os
@@ -126,6 +140,7 @@ from mypkg.module_a import CONST_A
 * **全パブリック関数／メソッド**に必須。
 * 戻り値に `-> None` も明示。
 * `from __future__ import annotations` 推奨。
+* 可能なら型チェックツール（mypy等）を段階導入。
 
 ```python
 from typing import List
@@ -138,8 +153,9 @@ def parse_items(lines: List[str]) -> List[int]:
 
 ## ドキュメンテーション
 
-* **GoogleスタイルのDocstring**を採用。
+* **GoogleスタイルのDocstring**を採用（PEP 257の原則に準拠：def/class直後に記述）。
 * モジュール、クラス、関数すべてに説明を付与し、引数・戻り値・例外を明示。
+* 重要処理は「計算量/前提条件/注意点/Examples」を含める。
 
 ### Docstring例
 
@@ -157,17 +173,18 @@ def connect(host: str, port: int = 5432) -> Connection:
     Raises:
         ConnectionError: 接続失敗時。
     """
-    pass
+    ...
 ```
 
 ---
 
 ## 例外・エラー処理
 
-* 捕捉は必要最小限に留める。
-* 捕捉時は必ずログ出力または再送出を行う。
-* 独自例外を定義する場合は `Exception` を直接継承し、プロジェクト固有の基底例外クラスを用意してもよい。
-* **テストコード内で`expect`を利用する際**、例外情報を詳細に記録するために必ず以下の形式でログ出力を行うこと：
+* 捕捉は必要最小限に留める。握りつぶし禁止。
+* 例外メッセージは「行為 + 対象 + 期待 vs 実際 + 次アクション」で具体的に。
+* 原因保持のため `raise NewError(...) from err` を推奨。
+* 独自例外を定義する場合は `Exception` を直接継承し、必要なら基底例外を用意。
+* **テストコード内で`expect`を利用**する際のログ形式：
 
 ```python
 try:
@@ -177,7 +194,7 @@ except AssertionError as e:
     raise
 ```
 
-> **ロガーの生成方法に制限はありません**。プロジェクトやモジュールの方針に合わせて自由に実装してください。
+> ロガーの生成方法は任意。プロジェクトやモジュール方針に合わせてよい。
 
 ```python
 # 例1: モジュールレベルで取得
@@ -197,62 +214,85 @@ class Processor:
 **pytest推奨理由**
 
 1. **記述量が少なく読みやすい**（`assert`がそのまま使える）。
-2. **強力なfixture機能**でテストデータや環境のセットアップを簡潔に管理可能。
-3. **パラメータ化テスト**で同一関数の複数条件テストが容易。
-4. **豊富なプラグイン**（pytest-cov, pytest-mockなど）で拡張性が高い。
-5. unittestコードもそのまま実行可能な互換性。
+2. **強力なfixture機能**でセットアップ/後処理を簡潔に管理。
+3. **パラメータ化**で条件網羅が容易。
+4. **豊富なプラグイン**（pytest-cov, pytest-mock等）。
+5. unittestコードもそのまま実行可能。
 
 **ルール**
 
-* テストは原則`if __name__ == "__main__"`では行わず下記テスト用コードで行う。
+* テストは原則 `if __name__ == "__main__"` で行わない。
 * 単体テスト：`tests/unit/test_<module_name>.py`
 * 結合テスト：`tests/integration/test_integration.py`
 * カバレッジ90%以上（`pytest --cov`で測定）。
-* **期待値検証(`expect`)時**には必ず詳細ログを残すため以下を実施：
+* 各テストに短いDocstringで「目的/前提/期待結果」を1〜3行で記載。
+* 代表的エッジケース（付録参照）を最低1つは含める。
 
-  ```python
-  try:
-      expect(func() == expected)
-  except AssertionError as e:
-      logger.error("期待値不一致: %s", e, exc_info=True)
-      raise
-  ```
+期待値検証（`expect`）時のログ：
 
-  ロガーの取得方法は自由。
+```python
+try:
+    expect(func() == expected)
+except AssertionError as e:
+    logger.error("期待値不一致: %s", e, exc_info=True)
+    raise
+```
 
 実行例：
 
-```bash
+Windows (cmd.exe):
+
+```cmd
+.venv\Scripts\activate
 pytest --maxfail=1 --disable-warnings -q
-pytest --cov=src tests/
+pytest --cov=ProgramName tests
+```
+
+macOS/Linux:
+
+```bash
+source .venv/bin/activate
+pytest --maxfail=1 --disable-warnings -q
+pytest --cov=ProgramName tests
 ```
 
 ---
 
 ## 設定管理
 
-* 環境変数禁止：外部依存を排除。
-* 設定ファイルは `resources/ApplicationConfig.xml` のみ。
-* シークレット情報は含めず、暗号化または別途管理。
+* 原則：環境変数禁止。設定は `resources/ApplicationConfig.xml` に集約。機密値・CI設定・実行環境識別などはログに出さない。
+* 例外：なし。
 
 ---
 
 ## CI／Lint／フォーマッタ
 
-開発開始時には、仮想環境を有効化のうえ `requirements-dev.txt` を使って以下をインストールしてください。
+開発開始時には、仮想環境を作成して `requirements-dev.txt` をインストール。
 
-```bash
+Windows (cmd.exe):
+
+```cmd
 python -m venv .venv
-. .venv\Scripts\activate
+.venv\Scripts\activate
 pip install -r requirements-dev.txt
 ```
 
-* **Black**: コード整形。
-* **isort**: インポート整列。
-* **flake8** or **pylint**: 静的解析。
-* **unittest**: テスト実行。
+macOS/Linux:
 
-### GitHub Actions 例
+```bash
+python -m venv .venv
+source .venv/bin/activate
+pip install -r requirements-dev.txt
+```
+
+推奨ツール：
+
+* **Black**: コード整形（行長88）。
+* **isort**: インポート整列（profile=black）。
+* **Ruff（推奨）** または **flake8/pylint**: 静的解析。
+* **pytest**: テスト実行。
+
+### GitHub Actions 例（pytestに統一）
 
 ```yaml
 name: CI
@@ -267,15 +307,16 @@ jobs:
   quality:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v3
-      - uses: actions/setup-python@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
       - run: pip install -r requirements-dev.txt
-      - run: black --check src tests
-      - run: isort --check-only src tests
-      - run: flake8 src tests
-      - run: python -m unittest discover tests
+      - run: black --check ProgramName tests
+      - run: isort --check-only ProgramName tests
+      - run: ruff check ProgramName tests || flake8 ProgramName tests
+      - run: pytest --maxfail=1 --disable-warnings -q
+      - run: pytest --cov=ProgramName --cov-report=term-missing
 ```
 
 ---
@@ -285,10 +326,10 @@ jobs:
 1. 開発必須ライブラリを記載した `requirements_dev.txt` をコピーして `requirements.txt` を作成。
 2. 必要なライブラリを `requirements.txt` に追記。
 3. `pip install -r requirements.txt`。
-4. `pip freeze > requirements_results.txt`。
-5. `requirements_results.txt` をリポジトリにpush。
+4. `pip freeze > requirements_result.txt`。
+5. `requirements_result.txt` をリポジトリにpush。
 6. ライブラリ追加時は①〜⑤を再実施。
-7. GitHub Dependabotで自動脆弱性チェック。
+7. Dependabot で自動脆弱性チェック。
 
 ---
 
@@ -307,13 +348,36 @@ fix: ログイン例外処理を修正
 
 ## Copilot 連携のヒント
 
-* リポジトリ直下に `CODE_STYLE.md` を配置。
+* リポジトリ直下に本ガイド（`CODING_STYLE.md`）を配置。
 * プロンプト先頭にガイドへのリンクを記載。
 
 ```plaintext
 # Please follow this Python coding style guide:
-# https://github.com/your-org/your-repo/blob/main/CODE_STYLE.md
+# https://github.com/your-org/your-repo/blob/main/CODING_STYLE.md
 ```
+
+* 「WHY/TODO/NOTE/PERF」などのタグをコメントで統一（Copilotが意図を理解しやすい）。
+
+---
+
+## 付録（実務ガイド）
+
+### A. 関数分割と複雑度の目安
+* 1関数の行数：目安 ≤ 50 行。分岐数：目安 ≤ 8。循環的複雑度：目安 ≤ 10。
+* 逸脱する場合は Docstring の「Notes」やコメントで理由（WHY）を記述。
+* 早期return（ガード節）でネストを浅く保つ。
+
+### B. エッジケース標準セット
+* 空/None、境界（最小/最大/負）、巨大データ、重複/順序、タイムアウト、権限、並行、I/O失敗、外部サービス不達。
+
+### C. ログと監視
+* ログレベル：DEBUG（開発詳細）/INFO（通常）/WARNING（注意）/ERROR（復旧可能エラー）/CRITICAL（致命）。
+* 機密値（トークン/パスワード/個人情報）はログ出力しない（マスク）。
+* 例外時は `exc_info=True` を付ける。相関IDがある場合は一緒に出力。
+
+### D. 命名のヒント
+* 目的語+動詞の順で読みやすく（load_image, parse_config）。
+* 単位/型/フォーマットを名前で伝える（timestamp_utc, id_hex）。
 
 ---
 
