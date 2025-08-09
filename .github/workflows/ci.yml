@@ -1,0 +1,33 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install deps
+        run: |
+          python -m venv .venv
+          . .venv/bin/activate
+          pip install -r requirements-dev.txt
+      - name: Format check
+        run: . .venv/bin/activate && black --check ProgramName
+      - name: Import order check
+        run: . .venv/bin/activate && isort --check-only ProgramName
+      - name: Lint
+        run: . .venv/bin/activate && ruff check ProgramName || flake8 ProgramName || true
+      - name: Type check
+        run: . .venv/bin/activate && mypy ProgramName
+      - name: Tests
+        run: . .venv/bin/activate && pytest -q
+      - name: Coverage
+        run: . .venv/bin/activate && pytest --cov=ProgramName --cov-report=term-missing

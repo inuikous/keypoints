@@ -1,4 +1,9 @@
-# Python 至高のコーディング規約 (改訂版)
+---
+description: 'Python コーディング規約 (日本語版)'
+applyTo: '**/*.py'
+---
+
+# Python コーディング規約
 
 この文書は、Python初心者にも分かりやすく、チームでの再現性と品質を高めるための実践的な規約です。Copilot/自動化ツールと相性良く運用できるように具体例と数値基準を示します。
 
@@ -39,21 +44,21 @@ ProjectName/
 ├── ProgramName/
 │   ├── main.py
 │   ├── common/   # 開発Gr内共通モジュール
-│   └── scripts/  # モジュール
-│        ├── module_a.py
-│        └── module_b.py
-├── resources/
-│   └── ApplicationConfig.xml
-├── tests/
-│   ├── unit/
-│        ├── test_module_a.py
-│        └── test_module_b.py
-│   └── integration/
-│        └── test_integration.py
-├── models/
-│        ├── openvino_model.xml
-│        └── openvino_model.bin
-├── results/
+│   ├── models/
+│   │    ├── openvino_model.xml
+│   │    └── openvino_model.bin
+│   ├── resources/
+│   │    └── ApplicationConfig.xml
+│   ├── results/
+│   ├── scripts/  # モジュール
+│   │    ├── module_a.py
+│   │    └── module_b.py
+│   └── tests/
+│        ├─── unit
+│        │    ├── test_module_a.py
+│        │    └── test_module_b.py
+│        └─── integration
+│             └── test_integration.py
 ├── docs/
 ├── requirements_dev.txt
 ├── requirements.txt
@@ -357,6 +362,34 @@ fix: ログイン例外処理を修正
 ```
 
 * 「WHY/TODO/NOTE/PERF」などのタグをコメントで統一（Copilotが意図を理解しやすい）。
+
+---
+
+## 互換性 / 廃止 (Deprecation) ポリシー
+
+本プロジェクトは「内部サービス / アプリケーション」前提で **長期的な後方互換レイヤを保持しません**。不要コードを温存せず、履歴は Git で追跡します。Copilot へも「ラッパを残さず rename / 削除で即時一本化」を期待します。
+
+原則:
+1. 公開 API として明示していないモジュール / 関数はバージョン間互換を保証しない。
+2. 名前変更・分割・インターフェース調整時は **同一PRで全利用箇所を更新** し旧シンボルを残さない。
+3. "legacy_", "old_", "deprecated_" のような一時ラッパ命名は禁止。Git 履歴で十分。
+4. 使われなくなった関数/クラス/設定項目/ファイルは即時削除（コメントアウトでの“仮残し”禁止）。
+5. Copilot プロンプトにも「古い関数を残さず置換」「互換ラッパ不要」と明示すること。
+6. 例外的に外部利用者が存在する場合のみ短期猶予（最大1スプリント）を設け `# DEPRECATED: <削除予定日>` コメントを付ける。期間経過後は削除。
+7. 削除/破壊的変更のコミットメッセージ例:
+    - `refactor: rename process_image to run_image_pipeline (no wrapper)`
+    - `breaking: remove obsolete parse_legacy_config` (外部影響がある場合)
+8. Dead code 判定基準（いずれか該当で削除）:
+    - 参照検索で0件
+    - テストも含めて import されない
+    - コメントアウト状態が1PRを超えて放置
+9. テストでのみ使用されていた補助関数は該当テストファイルへ移動（本体から削除）。
+
+プロンプト例（Copilot向け）:
+```text
+関数Aを関数Bへリネームし、旧Aは残さず全呼び出しを書き換えてください。
+互換ラッパ/別名は作成しないでください。CODING_STYLE.mdの廃止ポリシーに従うこと。
+```
 
 ---
 
