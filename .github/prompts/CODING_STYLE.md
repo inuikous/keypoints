@@ -3,9 +3,72 @@ description: 'Python コーディング規約 (日本語版)'
 applyTo: '**/*.py'
 ---
 
-# Python コーディング規約
+# Python コーディング規約（AIコード生成最適化版）
 
-この文書は、Python初心者にも分かりやすく、チームでの再現性と品質を高めるための実践的な規約です。Copilot/自動化ツールと相性良く運用できるように具体例と数値基準を示します。
+本ドキュメントは **GitHub Copilot 等のコード生成AIが最小曖昧性で正確にコードを生成** できるよう、
+人間/AI双方が解釈しやすい「優先順序付きルール + 明示チェックリスト + プロンプトテンプレ」を提供します。
+
+> 目的: 初学者でも「指示の抜け漏れ/再生成リトライの手戻り」を最小化し、品質と一貫性を自動化ツールで確実に担保する。
+
+---
+
+## 🔁 最上位優先順位 (AIへ渡す簡潔サマリ / TL;DR)
+
+1. 可読性 > 短文化 > 早すぎる最適化禁止。
+2. すべての公開関数/メソッド/テストに型ヒント + GoogleスタイルDocstring。
+3. 設定は環境変数禁止・`resources/ApplicationConfig.xml` に集約。
+4. Path操作は `pathlib.Path`、文字列連結禁止。
+5. 後方互換ラッパ禁止（rename後は旧名削除）。
+6. 例外は握りつぶさない。`raise ... from err` を優先。
+7. テストカバレッジ 90% 以上 (pytest + parametrize)。
+8. Dead code は即削除（コメントアウト保管禁止）。
+9. インポート順: 標準 / サードパーティ / 自プロジェクト（空行で区切る）。
+10. 行長 88 / Black / isort(profile=black) / Ruff (or flake8)。
+
+> AIにはまずこの 10 行を読み込ませる。詳細差異が必要になった時のみ下位節を参照。
+
+---
+
+## ✅ 最小チェックリスト (生成前に AI プロンプトへ貼り付け可)
+
+```
+【Code Checklist】
+[] 目的/入出力/利用者/制約(性能・I/O)を明文化したか
+[] 例外ポリシー(何を raise / どこで捕捉)を指定したか
+[] 型ヒント & Google Docstring 必須と記したか
+[] 路径処理は pathlib / 設定は ApplicationConfig.xml と明示したか
+[] ログレベルと禁止(機密値)を指示したか
+[] テスト観点(正常/境界/エラー1件以上)を列挙したか
+[] 後方互換ラッパ不要 & 旧API削除方針を明示したか
+[] 依存追加時の requirements 更新フローを指示したか
+[] 完了定義(DoD)を明記したか
+```
+
+---
+
+## 🧩 推奨プロンプトテンプレ (AIへ渡す指示例)
+
+```
+あなたは本リポジトリのPythonエンジニアです。CODING_STYLE.md の「最上位優先順位」「チェックリスト」に従い、以下を実施してください。
+
+【タスク】<何を実現したいか1行>
+【目的】<ユーザ価値 / 上位ユースケース>
+【入出力】Input: <型/意味> -> Output: <型/意味>
+【制約】性能:<ms or QPS>, メモリ:<MB>, 対応OS:<list>
+【例外方針】<主要な raise, どこで捕捉するか>
+【ログ】INFO=進行要点, DEBUG=詳細, 機密値マスク
+【アルゴリズム案】<簡潔: O記法や根拠>
+【テスト観点】正常 / 境界 / エラー / 大量データ / I/O失敗
+【非機能】可読性>性能, 早期return, 後方互換ラッパ禁止
+【完了定義】型/Docstring/テスト(>=90%)/lint/format全OK
+出力: 1) 設計要約 2) 実装コード 3) テストコード 4) 次の改善提案
+```
+
+---
+
+## ℹ️ 本文（詳細規約）
+
+この節以下は既存規約の詳細版です。AIへの投入は必要最小限とし、ヒューマンレビュー/参照用に保持します。
 
 ## 📘 目次
 
@@ -160,11 +223,12 @@ def parse_items(lines: List[str]) -> List[int]:
 
 ## ドキュメンテーション
 
-* **GoogleスタイルのDocstring**を採用（PEP 257の原則に準拠：def/class直後に記述）。
-* モジュール、クラス、関数すべてに説明を付与し、引数・戻り値・例外を明示。
-* 重要処理は「計算量/前提条件/注意点/Examples」を含める。
+* **GoogleスタイルDocstring**（PEP 257準拠）義務。
+* すべての公開シンボル: 説明 / Args / Returns / Raises / Examples(必要時) / Notes(逸脱理由)。
+* 複雑度閾値超過（行数>50 or 循環的複雑度>10）は Docstring の `Notes:` に理由を記述。
+* 可能なら `Examples:` に最小実行例（I/O 1:1）を追加し Copilot の補完精度を高める。
 
-### Docstring例
+### Docstring最小テンプレ
 
 ```python
 def connect(host: str, port: int = 5432) -> Connection:
@@ -172,15 +236,20 @@ def connect(host: str, port: int = 5432) -> Connection:
 
     Args:
         host (str): ホスト名。
-        port (int, optional): ポート番号。デフォルトは5432。
+        port (int, optional): ポート番号。デフォルト5432。
 
     Returns:
-        Connection: DB接続オブジェクト。
+        Connection: オープン済み接続。
 
     Raises:
-        ConnectionError: 接続失敗時。
+        ConnectionError: ネットワーク/認証失敗。
+
+    Examples:
+        >>> conn = connect("db.internal", 5432)
+        >>> conn.is_alive()
+        True
     """
-    ...
+    # 実装...
 ```
 
 ---
@@ -399,11 +468,84 @@ fix: ログイン例外処理を修正
     - コメントアウト状態が1PRを超えて放置
 9. テストでのみ使用されていた補助関数は該当テストファイルへ移動（本体から削除）。
 
-プロンプト例（Copilot向け）:
-```text
-関数Aを関数Bへリネームし、旧Aは残さず全呼び出しを書き換えてください。
-互換ラッパ/別名は作成しないでください。CODING_STYLE.mdの廃止ポリシーに従うこと。
+### プロンプト例（廃止対応指示）
 ```
+以下の関数 rename を実施してください:
+旧: process_image  新: run_image_pipeline
+要件: 旧名の残存禁止 / ラッパ禁止 / すべての呼び出し点を書き換え / テスト名も同期 / Dead code 削除。
+出力: 変更差分要約 + 更新コード + 影響範囲一覧 + テスト更新案。
+```
+
+---
+
+## 🤖 AI への投入/レビュー時フォーマット推奨
+
+以下を **Issue / PR 説明 / Copilotチャット最初のメッセージ** に貼ると再現性が高まる。
+
+```
+【Context】機能概要 / 背景 / 利用者
+【Goal】達成後の観測可能な状態
+【Non-Goals】今回扱わない範囲
+【Constraints】性能 / メモリ / I/O / 外部接続可否
+【Interfaces】公開予定関数(シグネチャ草案)
+【Data Flow】入力 -> 加工 -> 出力 (簡潔)
+【Error Policy】主要例外 / 再試行方針
+【Test Plan】正/境界/例外/大規模/スモーク
+【Done Definition】lint/format/tests(≥90%)/型/レビュー合意
+```
+
+---
+
+## 🧪 DoD (Definition of Done) 再掲
+* Black / isort / Ruff 無警告。
+* mypy (導入済領域) pass or 許容例外に `# type: ignore` (理由コメント必須)。
+* pytest 全緑 / カバレッジ 90%+ (除外は `# pragma: no cover` + 理由)。
+* Docstring & README 反映。
+* Dead code / 未使用 import / TODO 無し（残す場合は Issue 番号必須）。
+
+---
+
+## 📎 付録: 失敗しやすい曖昧指示と改善例
+
+| NG 指示 | 問題 | 改善例 |
+|---------|------|--------|
+| 画像を処理する関数作って | 入出力条件不明 | PNG/RGB画像(Path/np.ndarray許容)を読み→リサイズ(長辺=256)→正規化(float32[0,1])→np.ndarray返却 |
+| 早くして | 指標不明 | 処理時間 <50ms (100枚バッチ時)、アルゴリズム O(n) を維持 |
+| エラー処理ちゃんとして | 例外境界不明 | I/O失敗=Retry3回→ConnectionError、パラメータ不正は ValueError 即raise |
+
+---
+
+## 🗂 機械可読サマリ (スクリプト抽出用 YAML) 
+> 自動整形禁止。ツールがこのブロックを抽出可能。
+
+```yaml
+style:
+    line_length: 88
+    formatter: black
+    import_sorter: isort
+    linter: ruff
+    typing: required_public
+    docstring: google
+tests:
+    framework: pytest
+    coverage_min: 0.90
+    layout: tests/{unit,integration}
+    edge_cases: [empty, boundary, large, error, io_failure]
+deprecation:
+    wrapper_allowed: false
+    rename_policy: update_all_refs_same_pr
+paths:
+    config: resources/ApplicationConfig.xml
+    models: ProgramName/models
+    results: ProgramName/results
+exceptions:
+    rethrow_with_cause: true
+    mandatory_message: true
+```
+
+---
+
+（以上）
 
 ---
 
