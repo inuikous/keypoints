@@ -321,7 +321,7 @@ Windows (cmd.exe):
 ```cmd
 .venv\Scripts\activate
 pytest --maxfail=1 --disable-warnings -q
-pytest --cov=ProgramName tests
+pytest tests
 ```
 
 macOS/Linux:
@@ -353,71 +353,22 @@ config_file = cfg_dir / "ApplicationConfig.xml"  # 連結は / 演算子
 
 ---
 
-## CI／Lint／フォーマッタ
+## (簡略) 開発時の基本コマンド
 
-開発開始時には、仮想環境を作成して `requirements-dev.txt` をインストール。
+初学者向けに CI や高度な自動化は当面省略し、ローカルで以下のみ実行する。
 
-Windows (cmd.exe):
-
-```cmd
+```
 python -m venv .venv
-.venv\Scripts\activate
+.venv\Scripts\activate  # Windows
 pip install -r requirements-dev.txt
+
+black .
+isort .
+ruff check .
+pytest -q
 ```
 
-macOS/Linux:
-
-```bash
-python -m venv .venv
-source .venv/bin/activate
-pip install -r requirements-dev.txt
-```
-
-推奨ツール：
-
-* **Black**: コード整形（行長88）。
-* **isort**: インポート整列（profile=black）。
-* **Ruff（推奨）** または **flake8/pylint**: 静的解析。
-* **pytest**: テスト実行。
-
-### GitHub Actions 例（pytestに統一）
-
-```yaml
-name: CI
-
-on:
-  push:
-    branches: [ main, develop ]
-  pull_request:
-    branches: [ main, develop ]
-
-jobs:
-  quality:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-      - run: pip install -r requirements-dev.txt
-      - run: black --check ProgramName tests
-      - run: isort --check-only ProgramName tests
-      - run: ruff check ProgramName tests || flake8 ProgramName tests
-      - run: pytest --maxfail=1 --disable-warnings -q
-      - run: pytest --cov=ProgramName --cov-report=term-missing
-```
-
----
-
-## 依存管理＆パッケージング
-
-1. 開発必須ライブラリを記載した `requirements_dev.txt` をコピーして `requirements.txt` を作成。
-2. 必要なライブラリを `requirements.txt` に追記。
-3. `pip install -r requirements.txt`。
-4. `pip freeze > requirements_result.txt`。
-5. `requirements_result.txt` をリポジトリにpush。
-6. ライブラリ追加時は①〜⑤を再実施。
-7. Dependabot で自動脆弱性チェック。
+依存追加時は `requirements-dev.txt` / `requirements.txt` に追記後、`pip freeze > requirements_result.txt` を任意で生成し履歴管理する。
 
 ---
 
