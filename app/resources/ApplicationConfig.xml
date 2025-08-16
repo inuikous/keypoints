@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  ApplicationConfig.xml (サンプル / Phase1 用)
+  各要素は詳細設計・基本設計で定義した設定サブ構造に対応。
+  実運用で値を調整する際は DEV_LOG.md へ変更理由 (Decision) を追記すること。
+-->
+<ApplicationConfig>
+  <!-- Cameras: 監視対象カメラ一覧。id はユニーク。url は RTSP/ファイル/後続で他種入力ソースへ拡張可能。-->
+  <Cameras>
+    <!-- ダミーカメラ定義: Phase1 では実際の RTSP 接続は行わずスタブとして利用 -->
+    <Camera id="cam01" url="rtsp://example.invalid/stream1" />
+  </Cameras>
+
+  <!-- Model: OpenVINO IR / メタ情報ファイルパス。Phase1 は存在しなくてもよい (スタブ推論)。 -->
+  <Model xml="models/dummy.xml" bin="models/dummy.bin" metadata="models/dummy.meta.json" />
+
+  <!-- Inference: 目標 FPS と推論デバイス。AUTO / CPU / GPU など。 -->
+  <Inference target_fps="10" device="AUTO" />
+
+  <!-- Retry: 初期接続リトライ回数とバックオフ秒 (線形 / 後続で指数へ拡張可)。 -->
+  <Retry connect_max_attempts="3" connect_backoff_sec="1.0" />
+
+  <!-- Buffer: Aggregator の結果リングバッファ最大保持件数。メモリと参照期間を考慮して設定。 -->
+  <Buffer results_max_entries="1024" />
+
+  <!-- Recording: 録画機能有効可否と出力ディレクトリ。Phase1 では未実装のため enabled=false 推奨。 -->
+  <Recording enabled="false" output_dir="results/recordings" />
+
+  <!-- Export: デフォルトのエクスポートフォーマット (csv / json など拡張予定)。 -->
+  <Export default_format="csv" />
+
+  <!-- Restart: ワーカー自動再起動回数上限とその評価ウィンドウ秒。閾値超過で DOWN 固定。 -->
+  <Restart max_restarts_per_camera="3" restart_window_sec="300" />
+
+  <!-- Health: PING 間隔 / タイムアウト / 連続失敗閾値。失敗閾値到達でヘルス異常扱い。 -->
+  <Health ping_interval_sec="5" ping_timeout_sec="10" ping_loss_threshold="3" />
+
+  <!-- Perf: 運用上の目標遅延 / ドロップ率警告閾値 (ログの WARNING 発火条件)。 -->
+  <Perf latency_p95_target_ms="500" drop_rate_warn="0.05" />
+
+  <!-- GUI: テーマや将来の GUI 表示設定。 -->
+  <GUI theme="dark" />
+
+  <!-- Logging: ログ出力先ディレクトリとログレベル。レベルは DEBUG/INFO/WARNING/ERROR/CRITICAL。 -->
+  <Logging dir="app/logs" level="INFO" />
+</ApplicationConfig>
