@@ -192,7 +192,7 @@ Output: <型/例>
 ## 11. 例: 関数実装
 ```
 目的: CSV行を辞書へ変換。
-背景: ProgramName/scripts/data_loader.py へ追加。列 id(int), name(str), score(float)
+背景: services/data_loader.py へ追加。列 id(int), name(str), score(float)
 要件:
 - 無効列数=ValueError
 - 空白trim / 数値変換失敗 raise from
@@ -233,7 +233,7 @@ Refine抜粋:
 ```
 Goal: 画像前処理パイプライン高速化 (conf=0.78)
 TaskType: refactor
-Scope: ProgramName/scripts/image_preprocess.py (conf=0.72)
+Scope: services/image_preprocess.py (conf=0.72)
 EdgeCases: 空画像, 超高解像度, 異常チャネル
 Constraints: 行長88 / 型必須 / Google Docstring / 精度劣化なし(画素差<1e-3)
 Gaps: 1. 目標ms? 2. 並列(CPU/GPU)? 3. 現行平均?

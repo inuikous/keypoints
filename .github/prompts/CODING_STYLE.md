@@ -24,7 +24,8 @@ applyTo: '**/*.py'
 13. [依存管理＆パッケージング](#依存管理パッケージング)
 14. [Git コミット＆ブランチ運用](#gitコミットブランチ運用)
 15. [Copilot 連携のヒント](#copilot連携のヒント)
-16. [付録（実務ガイド）](#付録実務ガイド)
+16. [禁止事項 / 閉域ネットワーク制約](#禁止事項--閉域ネットワーク制約)
+17. [付録（実務ガイド）](#付録実務ガイド)
 
 ---
 
@@ -34,6 +35,7 @@ applyTo: '**/*.py'
 * **一貫性**：全体で同一のルールを適用。
 * **自動化容易性**：CI／Lint／フォーマッタとの親和性を重視。
 * **拡張性**：小規模から大規模までスケール可能な構成。
+* **外部環境依存の排除**：環境変数・利用端末固有パス・外部ネットワーク可否に挙動を依存させない（閉域/製造現場での再現性確保）。
 
 ---
 
@@ -43,7 +45,7 @@ applyTo: '**/*.py'
 ProjectName/
 ├── ProgramName/
 │   ├── main.py
-│   ├── common/   # 開発Gr内共通モジュール
+│   ├── common/   # 開発Gr内共通モジュール ※まだ存在しないため不使用
 │   ├── models/
 │   │    ├── openvino_model.xml
 │   │    └── openvino_model.bin
@@ -267,6 +269,18 @@ pytest --cov=ProgramName tests
 
 * 原則：環境変数禁止。設定は `resources/ApplicationConfig.xml` に集約。機密値・CI設定・実行環境識別などはログに出さない。
 * 例外：なし。
+* **Path/IO ポリシー**:  パス操作は `pathlib.Path` を第一選択とし、`os.path.*` は互換性/低レベル API が必須の場合のみ。文字列連結でのパス生成禁止。例: `Path(base) / "sub" / filename`。
+* **環境差異吸収**: ホームディレクトリやユーザ名を参照しない。必要な一時領域はアプリ自身のワークディレクトリ直下 (`./runtime/` 等) を明示生成。
+* **動的設定更新**: ホットリロード対象は ConfigService 経由に限定。直接ファイルを開いて書き換えるユーティリティ関数を追加しない。
+
+```python
+from pathlib import Path
+
+cfg_dir = Path("resources")
+config_file = cfg_dir / "ApplicationConfig.xml"  # 連結は / 演算子
+```
+
+`os.environ.get` や `os.getenv` を用いた分岐や隠しフラグは禁止。実装レビューで検出次第修正。
 
 ---
 

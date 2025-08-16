@@ -50,7 +50,7 @@ pytest -q
 ProgramName/
 	main.py
 	common/        # 共通ユーティリティ（例外/ログ等）
-	scripts/       # 業務ロジックモジュール
+services/      # 業務ロジックモジュール
 	models/        # モデル資産
 	resources/     # 設定 (ApplicationConfig.xml 等)
 	results/       # 出力
