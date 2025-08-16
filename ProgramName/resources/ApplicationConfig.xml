@@ -1,5 +1,0 @@
-<?xml version="1.0" encoding="UTF-8"?>
-<ApplicationConfig>
-    <!-- 設定例: 実際のキーは後続で追加 -->
-    <Logging level="INFO" />
-</ApplicationConfig>
