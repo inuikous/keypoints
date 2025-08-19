@@ -21,6 +21,8 @@ def test_cli_runs_and_outputs_stats(tmp_path: Path) -> None:
         encoding="utf-8",
     )
     cmd = [sys.executable, "-m", "app.main", "--config", str(xml), "--duration", "2"]
-    proc = subprocess.run(cmd, capture_output=True, text=True)
+    # プロジェクトルート (本テストファイル位置: app/tests/integration) に戻して実行
+    project_root = Path(__file__).resolve().parents[3]
+    proc = subprocess.run(cmd, capture_output=True, text=True, cwd=project_root)
     assert proc.returncode == 0, proc.stderr
     assert "[STATS]" in proc.stdout

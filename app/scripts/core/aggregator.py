@@ -1,12 +1,19 @@
-"""推論結果集約 Aggregator 実装 (Phase1 MVP 版)。
+"""推論結果集約 Aggregator 実装。
+
+Phase2 で以下の高度統計を追加済:
+    - latency_p50_ms / latency_p95_ms (1秒窓レイテンシ分位点)
+    - ema_fps (指数移動平均 FPS, alpha=0.2)
+    - StatsMessage による fps / avg_latency_ms / drop_rate オーバーライド
 
 責務:
-- カメラ毎のリングバッファ保持 (最新優先 / capacity 超で古い順自動破棄)
-- クエリ (since 指定) / スナップショット統計 (FPS, 平均レイテンシ, 最終更新)
+    * カメラ毎リングバッファ保持 (最新優先 / capacity 超で古い順自動破棄)
+    * クエリ (since 指定)
+    * スナップショット統計算出 (瞬間FPS, EMA FPS, 平均/分位レイテンシ, drop_rate, 最終更新時刻)
+    * StatsMessage 適用 (worker 事前集計値優先統合)
 
-設計簡略 (将来拡張点):
-- drop_rate: Worker 側で送信される StatsMessage 導入フェーズまで None。
-- StatsMessage / ExitNotice 受信 API は後続フェーズで拡張 (Phase2+)。
+注意:
+    - 現時点でマルチスレッド排他は不要 (単一 dispatcher スレッド想定)。
+    - マルチプロセス化時は親プロセス専有アクセスを前提とし Lock を後付け可能。
 """
 
 from __future__ import annotations
@@ -17,6 +24,7 @@ from datetime import datetime, timedelta
 from typing import Any, Deque, Dict, Iterable, List, Optional
 
 from . import utils_time
+from .messages import StatsMessage
 
 
 @dataclass(frozen=True, slots=True)
@@ -50,6 +58,11 @@ class Aggregator:
             raise ValueError("capacity は正数である必要があります")
         self._capacity = capacity
         self._buffers: Dict[str, Deque[ResultRecord]] = {}
+        # StatsMessage オーバーライド保持
+        self._stats_overrides: Dict[str, StatsMessage] = {}
+        # EMA FPS 保持
+        self._ema_fps: Dict[str, float] = {}
+        self._ema_alpha: float = 0.2
 
     # ------------------------------ 公開 API ------------------------------ #
     def push_result(self, record: ResultRecord) -> None:
@@ -98,19 +111,61 @@ class Aggregator:
             # 平均レイテンシ (同じ 1 秒窓)
             latencies = [r.latency_ms for r in recent if r.latency_ms is not None]
             avg_latency = sum(latencies) / len(latencies) if latencies else None
+            p50 = p95 = None
+            if latencies:
+                sorted_l = sorted(latencies)
+                def _pct(values: List[float], pct: float) -> float:
+                    if not values:
+                        return float("nan")
+                    k = (len(values) - 1) * pct
+                    i = int(k)
+                    if i == k:
+                        return values[i]
+                    return values[i] + (values[i + 1] - values[i]) * (k - i)
+                p50 = _pct(sorted_l, 0.5)
+                p95 = _pct(sorted_l, 0.95)
             # バッファ挿入順と時刻順が一致しない場合があるため明示的に最大時刻を計算
             last_ts = max(r.timestamp_utc for r in buf)
-            out[cam] = {
+            # EMA FPS
+            prev = self._ema_fps.get(cam)
+            ema_fps = fps if prev is None else prev + self._ema_alpha * (fps - prev)
+            self._ema_fps[cam] = ema_fps
+
+            entry: Dict[str, Any] = {
                 "fps": fps,
                 "avg_latency_ms": avg_latency,
                 "last_update": utils_time.isoformat_utc(last_ts),
                 "drop_rate": None,
+                "latency_p50_ms": p50,
+                "latency_p95_ms": p95,
+                "ema_fps": ema_fps,
             }
+            override = self._stats_overrides.get(cam)
+            if override:
+                if override.fps is not None:
+                    # override fps を使い EMA も更新して表示
+                    self._ema_fps[cam] = self._ema_fps[cam] + self._ema_alpha * (override.fps - self._ema_fps[cam])
+                    entry["fps"] = override.fps
+                    entry["ema_fps"] = self._ema_fps[cam]
+                if override.avg_latency_ms is not None:
+                    entry["avg_latency_ms"] = override.avg_latency_ms
+                entry["drop_rate"] = override.drop_rate
+            out[cam] = entry
         return out
 
     # ------------------------------ 補助/検査 ------------------------------ #
     def cameras(self) -> Iterable[str]:  # pragma: no cover - 極小ヘルパ
         return self._buffers.keys()
+
+    def apply_stats_message(self, msg: StatsMessage) -> None:
+        """StatsMessage を適用し snapshot_stats 出力へ反映。"""
+        self._stats_overrides[msg.camera_id] = msg
+
+    def last_update_dt(self, camera_id: str) -> Optional[datetime]:
+        buf = self._buffers.get(camera_id)
+        if not buf:
+            return None
+        return max(r.timestamp_utc for r in buf)
 
 
 __all__ = ["ResultRecord", "Aggregator"]

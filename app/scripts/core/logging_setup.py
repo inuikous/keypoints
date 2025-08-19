@@ -38,8 +38,16 @@ class JsonFormatter(logging.Formatter):
         }
         if record.exc_info:
             data["exc"] = self.formatException(record.exc_info)
-        # 追加メトリクス系 (存在時のみ)
-        for k in ("camera", "latency_ms", "fps", "drop_rate"):
+        # 追加メトリクス系 (存在時のみ) - 設計書の構造化キーに追随
+        for k in (
+            "camera",
+            "latency_ms",
+            "fps",
+            "ema_fps",
+            "latency_p50_ms",
+            "latency_p95_ms",
+            "drop_rate",
+        ):
             v = getattr(record, k, None)
             if v is not None:
                 data[k] = v
@@ -51,7 +59,7 @@ class JsonFormatter(logging.Formatter):
 
 def init_logging(
     log_dir: Path, level: str = "INFO"
-) -> Tuple[logging.handlers.QueueHandler, logging.handlers.QueueListener]:
+) -> Tuple[logging.handlers.QueueHandler, logging.handlers.QueueListener, "object"]:
     """親プロセス用集中ロギング初期化。
 
     Args:
@@ -59,7 +67,7 @@ def init_logging(
         level (str): ルートログレベル。
 
     Returns:
-        (QueueHandler, QueueListener): 子プロセス用ハンドラと listener。
+        (QueueHandler, QueueListener, log_queue): 子プロセス用ハンドラ/リスナ/生キュー。
     """
     from multiprocessing import Queue  # 遅延 import (起動時間最適化)
 
@@ -82,7 +90,7 @@ def init_logging(
     root.handlers.clear()
     root.addHandler(logging.handlers.QueueHandler(log_queue))
 
-    return root.handlers[0], listener
+    return root.handlers[0], listener, log_queue
 
 
 def configure_worker_logging(

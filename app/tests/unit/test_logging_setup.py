@@ -7,6 +7,35 @@ from pathlib import Path
 from app.scripts.core.logging_setup import JsonFormatter, init_logging
 
 
+def test_json_formatter_new_metrics_fields(tmp_path: Path) -> None:
+    """ema_fps / latency_p50_ms / latency_p95_ms が出力されることを検証。
+
+    既存フィールドとの後方互換を損なわず、新規メトリクスキーが存在すれば JSON に含まれる。
+    """
+    handler, listener = init_logging(tmp_path, level="DEBUG")
+    logger = logging.getLogger("metric_test")
+    logger.debug(
+        "metrics snapshot", 
+        extra={
+            "event": "METRIC_SNAPSHOT",
+            "camera": "camX",
+            "fps": 12.3,
+            "ema_fps": 11.8,
+            "latency_ms": 45.6,
+            "latency_p50_ms": 40.0,
+            "latency_p95_ms": 90.0,
+            "drop_rate": 0.05,
+        },
+    )
+    listener.stop()
+    log_file = tmp_path / "app.log"
+    lines = log_file.read_text(encoding="utf-8").strip().splitlines()
+    data = json.loads(lines[-1])
+    assert data.get("ema_fps") == 11.8
+    assert data.get("latency_p50_ms") == 40.0
+    assert data.get("latency_p95_ms") == 90.0
+
+
 def test_init_logging(tmp_path: Path) -> None:
     handler, listener = init_logging(tmp_path, level="INFO")
     logger = logging.getLogger("test")

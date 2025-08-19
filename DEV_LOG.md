@@ -1,3 +1,93 @@
+<!--
+DEV_LOG 運用ガイド (自動生成/更新向け):
+	* 目的: 開発時系列の意思決定 / 変更理由 / 次アクション最小集合を高速把握する。
+	* 原則: 「詳細設計 / 基本設計」に既に記述された構造説明や長大なコード抜粋は重複させない。
+	* 1 エントリ最大目安: ~120 行 or 8KB。超える場合は要約し詳細は設計ドキュメント / Git diff を参照と記載。
+	* 古いエントリは必要に応じて "(Archive Summary ...)" に圧縮し、フル履歴は Git へ委譲。
+	* 繰り返し出現するテンプレ (Metrics / Decisions など) は不足分のみ追記し冗長化を避ける。
+	* 大量の決定 (DEC-xxx) が増えた場合は 50 件毎に設計文書へ転記しここでは要約のみ残す。
+	* テストカバレッジや Lint 結果は大きく変動/閾値更新がある場合のみ記録。
+-->
+
+## 2025-08-18 01:10 Phase2-03 Aggregator 高度統計 (p50/p95/EMA) 拡張
+### Summary
+目的: Phase2 ロードマップ項目『Aggregator 拡張: drop_rate / latency 分布 (p50/p95) / EMA FPS』のうち latency 分布と EMA FPS を実装し、GUI/異常検知基盤となる指標を提供。
+結果: `snapshot_stats` が `latency_p50_ms`, `latency_p95_ms`, `ema_fps` を返却。StatsMessage override 適用時も EMA が滑らかに追従。既存 API 互換維持。
+
+### Changes
+- 更新: `aggregator.py` (p50/p95 計算, EMA FPS, StatsMessage override 統合リファクタ, docstring 更新)
+- 更新: `test_aggregator_stats.py` (p50/p95/EMA 検証テスト追加)
+- 更新: `DEV_LOG.md` (本エントリ追加)
+
+### Metrics
+- 新規テスト: 1 (percentile/EMA 観点)
+- 既存テスト: 後方互換性維持 (失敗なし想定)
+
+### Decisions
+| ID | 内容 | 理由 | 影響 |
+|----|------|------|------|
+| DEC-027 | 分位点ウィンドウ=1秒 (FPS 窓と同一) | 実装簡潔 & 一貫性 | 高頻度変動は EMA で平滑化 |
+| DEC-028 | EMA alpha=0.2 固定 | 初期調整不要 / 適度な追従性 | 将来 config 化余地 |
+| DEC-029 | StatsMessage 内に p50/p95 を含めず中央再計算 | プロセス間転送量削減 | Worker 側負荷最小 |
+
+### Next
+1. MetricsThread 実装 (ストール/閾値異常ログ) で新指標活用
+2. 設計文書 (基本/詳細) の統計項目更新 (v0.4 草案)
+3. drop_rate override のテスト強化 (多カメラ scenario)
+
+---
+
+## 2025-08-18 01:40 Phase2-04 MetricsThread 導入 & StatsMessage 適用活性化
+### Summary
+目的: ランタイム統計を周期取得し将来の異常検知/GUI 反映基盤を整備。Worker→dispatcher の StatsMessage を実際に Aggregator へ適用する流れを有効化。
+結果: metrics.py (MetricsThread) を追加し Orchestrator.start() で起動。Worker は 1 秒窓で StatsMessage をキューへ送信し dispatcher が apply_stats_message を呼ぶ。Aggregator は p50/p95/EMA / drop_rate を統合。基本テスト (metrics thread 動作) 追加。
+
+### Changes
+- 追加: `metrics.py` (MetricsThread 実装)
+- 更新: `orchestrator.py` (MetricsThread 起動 / StatsMessage 適用)
+- 更新: `worker.py` (1秒毎 StatsMessage 送信ロジック)
+- 追加: `test_metrics_thread.py`
+- 更新: `DEV_LOG.md` (本エントリ)
+
+### Decisions
+| ID | 内容 | 理由 | 影響 |
+|----|------|------|------|
+| DEC-030 | MetricsThread 間隔=1.0s 固定 (config 未導入) | 仕様簡素化 | 将来 XML 化余地 |
+| DEC-031 | StatsMessage 窓リセットでカウンタ再初期化 | 1秒粒度の明確化 | 短期スパイク平滑化 |
+
+### Next
+1. Ping/Pong ヘルス監視実装
+2. 多カメラ StatsMessage 統合テスト
+3. multiprocessing 化準備 (Queue/Pipe インタフェース抽象)
+
+---
+
+## 2025-08-18 00:05 Phase2-02 StatsMessage 集約統合
+### Summary
+目的: Worker 生成統計 (fps/avg_latency/drop_rate) を StatsMessage で dispatcher→Aggregator に統合し GUI/出力で利用可能にする基盤。
+結果: Worker が 1秒間隔で StatsMessage を送信。Orchestrator dispatcher が受信し Aggregator.apply_stats_message へ反映。snapshot_stats で drop_rate が表示されるようになった。
+
+### Changes
+- 更新: `worker.py` (1s 間隔 StatsMessage 送信ロジック追加)
+- 更新: `orchestrator.py` (StatsMessage 分岐処理: apply_stats_message)
+- 更新: `aggregator.py` (stats override/drop_rate 反映機構)
+- 追加: `test_aggregator_stats.py`, orchestrator StatsMessage 統合テスト
+- 更新: `DEV_LOG.md` (本エントリ)
+
+### Metrics
+- 追加テスト: 2 (aggregator, orchestrator stats)
+- カバレッジ: (次回測定) 低下想定小
+
+### Decisions
+| ID | 内容 | 理由 | 影響 |
+|----|------|------|------|
+| DEC-026 | Aggregator は StatsMessage をオーバーライド優先 | Worker 側集計を信頼し二重計算簡素化 | 後で EMA 等導入時に再評価 |
+
+### Next
+Phase2-03: 複数カメラ設定 & integration 強化 or Phase2-04 multiprocessing 準備 (選択要)。
+
+---
+
 ## 2025-08-16 03:00 Phase 1 Consolidation (Coverage 96% / Lint & Format Complete)
 ### Summary
 目的: Phase1 タスク 1-10 実装後の最終整備 (coverage>=90% 達成確認 / ruff+isort+black 適用 / 不要ファイル削除) と次フェーズ準備。
